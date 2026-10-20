@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>接続テスト</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="接続テスト">
+  <meta name="theme-color" content="#2f6fd6">
+  <style>
+    :root {
+      --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #667085; --line: #e3e6ec;
+      --accent: #2f6fd6; --accent-text: #fff; --ok: #1f8a4c; --warn: #b26a00; --ng: #c8322f;
+      --chip: #eef2f8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14171c; --card: #1d2128; --text: #e7eaf0; --muted: #98a2b3; --line: #2e333d;
+        --accent: #5b8ff0; --accent-text: #0d1117; --ok: #4cc27f; --warn: #e3a33b; --ng: #f06b67;
+        --chip: #262b35;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+      font-size: 17px; line-height: 1.6;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+    }
+    main { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 24px; margin: 8px 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 20px; }
+    section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    h2 { font-size: 18px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+    h2 .num { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 15px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; }
+    button {
+      font: inherit; min-height: 52px; padding: 10px 18px; border-radius: 12px; cursor: pointer;
+      border: 1px solid var(--line); background: var(--chip); color: var(--text);
+    }
+    button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+    button.selected { outline: 3px solid var(--accent); outline-offset: 1px; font-weight: 600; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+    dt { color: var(--muted); }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .ok { color: var(--ok); font-weight: 600; }
+    .warn { color: var(--warn); font-weight: 600; }
+    .ng { color: var(--ng); font-weight: 600; }
+    .status { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: var(--chip); }
+    .status:empty { display: none; }
+    .hint { color: var(--muted); font-size: 15px; margin: 10px 0 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 16px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 500; }
+    textarea { width: 100%; min-height: 220px; font: 14px/1.5 ui-monospace, "Cascadia Mono", Menlo, monospace; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+    #typing { display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>業務アプリ 接続テスト</h1>
+  <p class="lead">この端末から、個人のMicrosoftアカウントでサインインし、OneDriveのアプリ専用フォルダに読み書きできるかを確かめます。上から順に進めてください。</p>
+
+  <section>
+    <h2><span class="num">1</span>この端末はどれ？</h2>
+    <div class="row" id="devices"></div>
+    <p class="hint">OneDriveに書き込むファイル名に使います。選び直しはいつでもできます。</p>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>サインイン</h2>
+    <dl>
+      <dt>状態</dt><dd id="authState">確認中…</dd>
+      <dt>今回の方法</dt><dd id="authMethod">—</dd>
+    </dl>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="btnRedirect">サインイン（画面切り替え）</button>
+      <button id="btnPopup">サインイン（別ウィンドウ）</button>
+    </div>
+    <div class="status" id="typing">
+      今のサインインで、パスワードやコードの入力は必要でしたか？
+      <div class="row" style="margin-top:10px">
+        <button data-typed="false">入力は不要だった</button>
+        <button data-typed="true">入力が必要だった</button>
+      </div>
+    </div>
+    <div class="status" id="authMsg"></div>
+    <p class="hint">iPadでは「Safariのタブで開いたとき」と「ホーム画面に追加して開いたとき」の両方で試してください。うまくいかない方式があれば、もう一方のボタンも試してください。</p>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>OneDriveに読み書き</h2>
+    <div class="row">
+      <button class="primary" id="btnDrive" disabled>書き込んで読み戻す</button>
+      <button id="btnList" disabled>他の端末の記録を見る</button>
+    </div>
+    <div class="status" id="driveMsg"></div>
+    <table id="deviceTable" hidden>
+      <thead><tr><th>端末</th><th>最後に書き込んだ日時</th><th>起動のしかた</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint">書き込むのは、端末名と日時だけの小さなテスト用ファイルです。OneDriveの「アプリ」フォルダの中に、このアプリ専用のフォルダが作られます。</p>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>この端末の環境</h2>
+    <dl id="env"></dl>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span>結果を送る</h2>
+    <div class="row">
+      <button class="primary" id="btnCopy">結果をコピー</button>
+    </div>
+    <p class="hint">コピーした内容を、そのままClaudeとの会話に貼り付けてください。メールアドレスは含まれません。</p>
+    <textarea id="report" readonly hidden></textarea>
+  </section>
+
+  <section>
+    <h2>サインインの履歴（この端末）</h2>
+    <table id="logTable">
+      <thead><tr><th>日時</th><th>方法</th><th>入力</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint">翌日以降にもう一度開くと、「何もしなくても入れたか」がここで分かります。</p>
+  </section>
+</main>
+
+<script src="config.js"></script>
+<script src="vendor/msal-browser.min.js"></script>
+<script>
+  const DEVICES = { "school-pc": "学校PC", "home-pc": "個人PC", "school-ipad": "学校iPad" };
+  const SCOPES = ["Files.ReadWrite.AppFolder"];
+  const GRAPH = "https://graph.microsoft.com/v1.0";
+  const FILE_PREFIX = "connection-test-";
+  const KEY_DEVICE = "ct.device";
+  const KEY_LOG = "ct.authLog";
+
+  const $ = (id) => document.getElementById(id);
+  const state = { pca: null, account: null, method: null, lastError: null, drive: null, others: null, env: {} };
+
+  function load(key, fallback) {
+    try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
+  }
+  function save(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 保存できない環境では記録を残さない */ }
+  }
+  function fmt(date) {
+    const d = new Date(date);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function setMsg(id, cls, text) {
+    const el = $(id);
+    el.innerHTML = "";
+    if (!text) return;
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = text;
+    el.appendChild(span);
+  }
+  function isStandalone() {
+    return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+
+  // ---- 1. 端末の選択 ----
+  function renderDevices() {
+    const box = $("devices");
+    box.innerHTML = "";
+    const current = load(KEY_DEVICE, null);
+    for (const [id, label] of Object.entries(DEVICES)) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      if (id === current) b.classList.add("selected");
+      b.onclick = () => { save(KEY_DEVICE, id); renderDevices(); };
+      box.appendChild(b);
+    }
+  }
+
+  // ---- 2. サインイン ----
+  function explainAuthError(e) {
+    const code = (e && (e.errorCode || e.code)) || "";
+    const text = String((e && (e.errorMessage || e.message)) || "");
+    if (code === "user_cancelled") return "サインインが途中でキャンセルされました。";
+    if (code === "popup_window_error" || code === "empty_window_error") return "別ウィンドウが開けませんでした（ポップアップがブロックされた可能性）。「画面切り替え」の方を試してください。";
+    if (code === "no_network_connectivity" || code === "endpoints_resolution_error") return "Microsoftのサインイン画面に接続できませんでした。学校のネットワークで遮断されている可能性があります。";
+    if (text.includes("AADSTS50011")) return "戻り先のURLがアプリ登録と一致していません（AADSTS50011）。アプリ登録の「リダイレクトURI」を確認します。";
+    if (text.includes("AADSTS700016")) return "アプリ登録が見つかりません（AADSTS700016）。config.js のIDか、登録の「サポートされているアカウントの種類」を確認します。";
+    if (text.includes("AADSTS65001")) return "OneDriveへのアクセス許可（同意）がまだです。もう一度サインインして「はい」を選んでください。";
+    return "サインインでエラーが出ました。";
+  }
+
+  function recordAuth(method, typed) {
+    const log = load(KEY_LOG, []);
+    log.unshift({ at: new Date().toISOString(), method, typed: typed ?? null });
+    save(KEY_LOG, log.slice(0, 20));
+    state.method = method;
+    $("authMethod").textContent = method;
+    renderLog();
+  }
+
+  function renderLog() {
+    const tbody = $("logTable").querySelector("tbody");
+    tbody.innerHTML = "";
+    const log = load(KEY_LOG, []);
+    if (!log.length) {
+      tbody.innerHTML = '<tr><td colspan="3">まだありません</td></tr>';
+      return;
+    }
+    for (const entry of log) {
+      const tr = document.createElement("tr");
+      const typed = entry.typed === true ? "必要" : entry.typed === false ? "不要" : "—";
+      for (const v of [fmt(entry.at), entry.method, typed]) {
+        const td = document.createElement("td");
+        td.textContent = v;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function askTyping() {
+    const box = $("typing");
+    box.style.display = "block";
+    box.querySelectorAll("button").forEach((b) => {
+      b.onclick = () => {
+        const log = load(KEY_LOG, []);
+        if (log[0]) { log[0].typed = b.dataset.typed === "true"; save(KEY_LOG, log); }
+        box.style.display = "none";
+        renderLog();
+      };
+    });
+  }
+
+  function setSignedIn(account) {
+    state.account = account;
+    state.pca.setActiveAccount(account);
+    $("authState").innerHTML = '<span class="ok">サインイン済み</span>';
+    $("btnDrive").disabled = false;
+    $("btnList").disabled = false;
+  }
+
+  async function signIn(kind) {
+    setMsg("authMsg", "", "");
+    try {
+      if (kind === "redirect") {
+        await state.pca.loginRedirect({ scopes: SCOPES });
+        return; // 画面が切り替わるので、続きは戻ってきたときの処理で行う
+      }
+      const result = await state.pca.loginPopup({ scopes: SCOPES });
+      setSignedIn(result.account);
+      recordAuth("別ウィンドウ");
+      askTyping();
+    } catch (e) {
+      state.lastError = e;
+      setMsg("authMsg", "ng", `${explainAuthError(e)}（${e.errorCode || e.name || "error"}）`);
+    }
+  }
+
+  async function getToken() {
+    const result = await state.pca.acquireTokenSilent({ scopes: SCOPES, account: state.account });
+    return result.accessToken;
+  }
+
+  async function initAuth() {
+    const clientId = (window.APP_CONFIG || {}).clientId;
+    if (!clientId) {
+      $("authState").innerHTML = '<span class="warn">まだ使えません：config.js にアプリ登録のIDが入っていません</span>';
+      $("btnRedirect").disabled = true;
+      $("btnPopup").disabled = true;
+      return;
+    }
+    state.pca = new msal.PublicClientApplication({
+      auth: {
+        clientId,
+        authority: "https://login.microsoftonline.com/consumers",
+        redirectUri: new URL("redirect.html", location.href).href,
+      },
+      cache: { cacheLocation: "localStorage" },
+    });
+    await state.pca.initialize();
+
+    try {
+      const result = await state.pca.handleRedirectPromise();
+      if (result) {
+        setSignedIn(result.account);
+        recordAuth("画面切り替え");
+        askTyping();
+        return;
+      }
+    } catch (e) {
+      state.lastError = e;
+      setMsg("authMsg", "ng", `${explainAuthError(e)}（${e.errorCode || e.name}）`);
+    }
+
+    const account = state.pca.getActiveAccount() || state.pca.getAllAccounts()[0];
+    if (!account) {
+      $("authState").innerHTML = '<span class="warn">まだサインインしていません</span>';
+      return;
+    }
+    state.account = account;
+    try {
+      const result = await state.pca.acquireTokenSilent({ scopes: SCOPES, account });
+      setSignedIn(account);
+      recordAuth(result.fromCache ? "自動（端末内の控え）" : "自動（裏で更新）", false);
+    } catch (e) {
+      state.lastError = e;
+      const needsInteraction = e instanceof msal.InteractionRequiredAuthError;
+      $("authState").innerHTML = needsInteraction
+        ? '<span class="warn">もう一度サインインが必要です（前回から時間が空いたため）</span>'
+        : '<span class="ng">サインイン状態を確認できませんでした</span>';
+      recordAuth(needsInteraction ? "要サインイン" : "確認エラー");
+      if (!needsInteraction) setMsg("authMsg", "ng", `${explainAuthError(e)}（${e.errorCode || e.name}）`);
+    }
+  }
+
+  // ---- 3. OneDrive ----
+  async function graph(path, options = {}) {
+    const token = await getToken();
+    const res = await fetch(GRAPH + path, {
+      ...options,
+      headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
+    });
+    if (!res.ok) {
+      const err = new Error(`OneDriveがエラーを返しました（${res.status}）`);
+      err.status = res.status;
+      err.body = await res.text().catch(() => "");
+      throw err;
+    }
+    return res.json();
+  }
+
+  // JavaScript からは /content を直接読めない（302転送とCORSの制約）ため、ダウンロード用URLを経由する
+  async function readItem(item) {
+    const res = await fetch(item["@microsoft.graph.downloadUrl"]);
+    if (!res.ok) throw new Error(`ファイルの読み込みに失敗しました（${res.status}）`);
+    return res.json();
+  }
+
+  function explainDriveError(e) {
+    if (e instanceof TypeError) return "OneDriveに接続できませんでした。学校のネットワークで遮断されている可能性があります。";
+    if (e.status === 401 || e.status === 403) return "OneDriveへのアクセスが拒否されました。いったんサインインし直してください。";
+    if (e instanceof msal.InteractionRequiredAuthError) return "サインインの有効期限が切れています。もう一度サインインしてください。";
+    return e.message;
+  }
+
+  async function runDriveTest() {
+    const device = load(KEY_DEVICE, null);
+    if (!device) { setMsg("driveMsg", "warn", "先に「1. この端末はどれ？」を選んでください。"); return; }
+    setMsg("driveMsg", "", "書き込み中…");
+    const payload = {
+      device,
+      label: DEVICES[device],
+      writtenAt: new Date().toISOString(),
+      standalone: isStandalone(),
+      nonce: (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()),
+    };
+    const name = `${FILE_PREFIX}${device}.json`;
+    try {
+      const t0 = performance.now();
+      await graph(`/me/drive/special/approot:/${name}:/content`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const t1 = performance.now();
+      const item = await graph(`/me/drive/special/approot:/${name}`);
+      const back = await readItem(item);
+      const t2 = performance.now();
+      const same = back.nonce === payload.nonce;
+      state.drive = { write: Math.round(t1 - t0), read: Math.round(t2 - t1), same };
+      setMsg("driveMsg", same ? "ok" : "ng",
+        same
+          ? `成功：書き込み ${state.drive.write}ms／読み戻し ${state.drive.read}ms／内容も一致`
+          : "書き込みはできましたが、読み戻した内容が一致しませんでした");
+      await listDevices();
+    } catch (e) {
+      state.lastError = e;
+      state.drive = { error: e.status || e.errorCode || e.name };
+      setMsg("driveMsg", "ng", explainDriveError(e));
+    }
+  }
+
+  async function listDevices() {
+    try {
+      const data = await graph("/me/drive/special/approot/children");
+      const files = (data.value || []).filter((it) => it.name.startsWith(FILE_PREFIX));
+      const rows = [];
+      for (const it of files) {
+        try { rows.push(await readItem(it)); } catch { /* 読めないファイルは飛ばす */ }
+      }
+      rows.sort((a, b) => a.device.localeCompare(b.device));
+      state.others = rows;
+      const table = $("deviceTable");
+      const tbody = table.querySelector("tbody");
+      tbody.innerHTML = "";
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        for (const v of [r.label, fmt(r.writtenAt), r.standalone ? "ホーム画面から" : "ブラウザのタブ"]) {
+          const td = document.createElement("td");
+          td.textContent = v;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.hidden = rows.length === 0;
+      if (!rows.length) setMsg("driveMsg", "", "まだどの端末も書き込んでいません。");
+    } catch (e) {
+      state.lastError = e;
+      setMsg("driveMsg", "ng", explainDriveError(e));
+    }
+  }
+
+  // ---- 4. 環境 ----
+  function browserName() {
+    const ua = navigator.userAgent;
+    const iPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    let name = "その他";
+    if (/Edg\//.test(ua)) name = "Edge";
+    else if (/CriOS|Chrome\//.test(ua)) name = "Chrome";
+    else if (/FxiOS|Firefox\//.test(ua)) name = "Firefox";
+    else if (/Safari\//.test(ua)) name = "Safari";
+    const os = iPad ? "iPad" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "不明";
+    return `${os} / ${name}`;
+  }
+
+  function testLocalStorage() {
+    try { localStorage.setItem("ct.probe", "1"); const ok = localStorage.getItem("ct.probe") === "1"; localStorage.removeItem("ct.probe"); return ok; } catch { return false; }
+  }
+
+  function testIndexedDB() {
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open("ct-probe", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("kv");
+        req.onerror = () => resolve(false);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction("kv", "readwrite");
+          tx.objectStore("kv").put("1", "probe");
+          tx.oncomplete = () => { db.close(); resolve(true); };
+          tx.onerror = () => { db.close(); resolve(false); };
+        };
+      } catch { resolve(false); }
+    });
+  }
+
+  async function renderEnv() {
+    const env = state.env;
+    env.browser = browserName();
+    env.launch = isStandalone() ? "ホーム画面から" : "ブラウザのタブ";
+    env.online = navigator.onLine;
+    env.localStorage = testLocalStorage();
+    env.indexedDB = await testIndexedDB();
+    env.persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null;
+    const yes = (b) => (b ? '<span class="ok">使える</span>' : '<span class="ng">使えない</span>');
+    $("env").innerHTML = `
+      <dt>端末とブラウザ</dt><dd>${env.browser}</dd>
+      <dt>起動のしかた</dt><dd>${env.launch}</dd>
+      <dt>ネット接続</dt><dd>${env.online ? '<span class="ok">オンライン</span>' : '<span class="warn">オフライン</span>'}</dd>
+      <dt>端末内の保存（小）</dt><dd>${yes(env.localStorage)}</dd>
+      <dt>端末内の保存（大）</dt><dd>${yes(env.indexedDB)}</dd>
+      <dt>保存の永続化</dt><dd>${env.persisted === null ? "—" : env.persisted ? "許可済み" : "未許可（ブラウザが容量不足時に消す可能性あり）"}</dd>`;
+  }
+
+  // ---- 5. 結果 ----
+  function buildReport() {
+    const env = state.env;
+    const device = load(KEY_DEVICE, null);
+    const log = load(KEY_LOG, []).slice(0, 5);
+    const err = state.lastError;
+    const lines = [
+      `【接続テスト結果】${fmt(new Date())}`,
+      `端末: ${device ? DEVICES[device] : "未選択"}`,
+      `ブラウザ: ${env.browser}（${env.launch}）`,
+      `端末内の保存: 小=${env.localStorage ? "OK" : "NG"} 大=${env.indexedDB ? "OK" : "NG"} 永続化=${env.persisted === null ? "—" : env.persisted ? "許可" : "未許可"}`,
+      `サインイン: ${state.account ? "済み" : "未"}（今回: ${state.method || "—"}）`,
+      `OneDrive: ${!state.drive ? "未実施" : state.drive.error ? `失敗(${state.drive.error})` : `書き込み${state.drive.write}ms 読み戻し${state.drive.read}ms 一致=${state.drive.same ? "はい" : "いいえ"}`}`,
+      `記録のある端末: ${state.others ? state.others.map((r) => `${r.label} ${fmt(r.writtenAt)}`).join(" / ") || "なし" : "未確認"}`,
+      `サインイン履歴: ${log.map((l) => `${fmt(l.at)} ${l.method}${l.typed === true ? "(入力あり)" : l.typed === false ? "(入力なし)" : ""}`).join(" / ") || "なし"}`,
+      `直近のエラー: ${err ? `${err.errorCode || err.status || err.name || "error"} ${String(err.errorMessage || err.body || err.message || "").slice(0, 200)}` : "なし"}`,
+    ];
+    return lines.join("\n");
+  }
+
+  async function copyReport() {
+    const text = buildReport();
+    const area = $("report");
+    area.value = text;
+    area.hidden = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      $("btnCopy").textContent = "コピーしました";
+    } catch {
+      area.focus();
+      area.select();
+      $("btnCopy").textContent = "下の文字を選んでコピーしてください";
+    }
+    setTimeout(() => { $("btnCopy").textContent = "結果をコピー"; }, 3000);
+  }
+
+  // ---- 起動 ----
+  $("btnRedirect").onclick = () => signIn("redirect");
+  $("btnPopup").onclick = () => signIn("popup");
+  $("btnDrive").onclick = runDriveTest;
+  $("btnList").onclick = listDevices;
+  $("btnCopy").onclick = copyReport;
+  renderDevices();
+  renderLog();
+  renderEnv();
+  initAuth().catch((e) => {
+    state.lastError = e;
+    $("authState").innerHTML = '<span class="ng">サインインの準備でエラーが出ました</span>';
+    setMsg("authMsg", "ng", `${e.errorCode || e.name}: ${e.message}`);
+  });
+</script>
+</body>
+</html>

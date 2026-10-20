@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>サインイン処理中</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; color: #444; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <p id="msg">サインインの結果を受け取っています…</p>
+  <!-- MSAL v5 の受け口（redirect bridge）。サインイン画面から戻ってきた結果を元のページへ渡す -->
+  <script src="vendor/msal-redirect-bridge.min.js"></script>
+  <script>
+    msalRedirectBridge.broadcastResponseToMainFrame().catch(function (e) {
+      document.getElementById("msg").textContent =
+        "サインイン結果の受け取りに失敗しました（" + (e.errorCode || e.message) + "）。このページを閉じて、元のページからやり直してください。";
+    });
+  </script>
+</body>
+</html>
