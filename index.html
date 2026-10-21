@@ -63,6 +63,10 @@
 <main>
   <h1>業務アプリ 接続テスト</h1>
   <p class="lead">この端末から、個人のMicrosoftアカウントでサインインし、OneDriveのアプリ専用フォルダに読み書きできるかを確かめます。上から順に進めてください。</p>
+  <div class="row" style="align-items:center; margin-bottom:16px">
+    <span class="hint" style="margin:0">版 <span id="ver"></span></span>
+    <button id="btnReload">最新の版を読み込む</button>
+  </div>
 
   <section>
     <h2><span class="num">1</span>この端末はどれ？</h2>
@@ -132,6 +136,7 @@
 <script src="config.js"></script>
 <script src="vendor/msal-browser.min.js"></script>
 <script>
+  const VERSION = "2026-10-21c";
   const DEVICES = { "school-pc": "学校PC", "home-pc": "個人PC", "school-ipad": "学校iPad" };
   const SCOPES = ["Files.ReadWrite.AppFolder"];
   const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -337,15 +342,39 @@
     return res.json();
   }
 
-  // JavaScript からは /content を直接読めない（302転送とCORSの制約）ため、ダウンロード用URLを経由する
-  async function readItem(item) {
-    const res = await fetch(item["@microsoft.graph.downloadUrl"]);
-    if (!res.ok) throw new Error(`ファイルの読み込みに失敗しました（${res.status}）`);
-    return res.json();
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // 中身の読み込み。まずダウンロード用URL（一時的な専用URL）から読み、失敗したら1秒待って再試行し、
+  // それでも駄目なら Graph の /content を直接読む（302転送とCORSの制約で、ブラウザによっては通らない）
+  async function readItem(item, trace) {
+    const url = item["@microsoft.graph.downloadUrl"];
+    if (trace) trace.host = url ? new URL(url).host : "なし";
+    const attempts = [
+      ["ダウンロードURL", () => fetch(url, { cache: "no-store" })],
+      ["ダウンロードURL再試行", async () => { await sleep(1000); return fetch(url, { cache: "no-store" }); }],
+      ["Graph経由", async () => fetch(`${GRAPH}/me/drive/items/${item.id}/content`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+        cache: "no-store",
+      })],
+    ].filter(([label]) => url || !label.startsWith("ダウンロード"));
+    let lastErr;
+    for (const [label, run] of attempts) {
+      try {
+        const res = await run();
+        if (!res.ok) throw Object.assign(new Error(`ファイルの読み込みに失敗しました（${res.status}）`), { status: res.status });
+        const data = await res.json();
+        if (trace) trace.via = label;
+        return data;
+      } catch (e) {
+        lastErr = e;
+        if (trace) trace.failed.push(`${label}:${e.status || e.name}`);
+      }
+    }
+    throw lastErr;
   }
 
   function explainDriveError(e) {
-    if (e instanceof TypeError) return "OneDriveに接続できませんでした。学校のネットワークで遮断されている可能性があります。";
+    if (e instanceof TypeError) return "通信が途中で失敗しました（電波の状態・ネットワークでの遮断・ブラウザの制限のどれか）。";
     if (e.status === 401 || e.status === 403) return "OneDriveへのアクセスが拒否されました。いったんサインインし直してください。";
     if (e instanceof msal.InteractionRequiredAuthError) return "サインインの有効期限が切れています。もう一度サインインしてください。";
     return e.message;
@@ -363,6 +392,7 @@
       nonce: (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()),
     };
     const name = `${FILE_PREFIX}${device}.json`;
+    const trace = { failed: [] };
     let step = "アプリ専用フォルダの準備";
     try {
       const t0 = performance.now();
@@ -375,20 +405,21 @@
         body: JSON.stringify(payload),
       });
       const t1 = performance.now();
-      step = "読み戻し";
+      step = "読み戻し（ファイル情報）";
       const item = await graph(`/me/drive/items/${folder.id}:/${encodeURIComponent(name)}`);
-      const back = await readItem(item);
+      step = "読み戻し（中身）";
+      const back = await readItem(item, trace);
       const t2 = performance.now();
       const same = back.nonce === payload.nonce;
-      state.drive = { write: Math.round(t1 - t0), read: Math.round(t2 - t1), same };
+      state.drive = { write: Math.round(t1 - t0), read: Math.round(t2 - t1), same, trace };
       setMsg("driveMsg", same ? "ok" : "ng",
         same
-          ? `成功：書き込み ${state.drive.write}ms／読み戻し ${state.drive.read}ms／内容も一致`
+          ? `成功：書き込み ${state.drive.write}ms／読み戻し ${state.drive.read}ms／内容も一致（読み込み経路: ${trace.via}）`
           : "書き込みはできましたが、読み戻した内容が一致しませんでした");
       await listDevices();
     } catch (e) {
       state.lastError = e;
-      state.drive = { error: `${step}で${e.status || e.errorCode || e.name}${e.code ? " " + e.code : ""}` };
+      state.drive = { error: `${step}で${e.status || e.errorCode || e.name}${e.code ? " " + e.code : ""}`, trace };
       setMsg("driveMsg", "ng", `「${step}」の段階で失敗：${explainDriveError(e)}`);
     }
   }
@@ -482,12 +513,13 @@
     const log = load(KEY_LOG, []).slice(0, 5);
     const err = state.lastError;
     const lines = [
-      `【接続テスト結果】${fmt(new Date())}`,
+      `【接続テスト結果】${fmt(new Date())}（版 ${VERSION}）`,
       `端末: ${device ? DEVICES[device] : "未選択"}`,
       `ブラウザ: ${env.browser}（${env.launch}）`,
       `端末内の保存: 小=${env.localStorage ? "OK" : "NG"} 大=${env.indexedDB ? "OK" : "NG"} 永続化=${env.persisted === null ? "—" : env.persisted ? "許可" : "未許可"}`,
       `サインイン: ${state.account ? "済み" : "未"}（今回: ${state.method || "—"}）`,
       `OneDrive: ${!state.drive ? "未実施" : state.drive.error ? `失敗(${state.drive.error})` : `書き込み${state.drive.write}ms 読み戻し${state.drive.read}ms 一致=${state.drive.same ? "はい" : "いいえ"}`}`,
+      `読み込み経路: ${!state.drive || !state.drive.trace ? "—" : `成功=${state.drive.trace.via || "なし"} 失敗=${state.drive.trace.failed.join(",") || "なし"} 接続先=${state.drive.trace.host || "—"}`}`,
       `記録のある端末: ${state.others ? state.others.map((r) => `${r.label} ${fmt(r.writtenAt)}`).join(" / ") || "なし" : "未確認"}`,
       `サインイン履歴: ${log.map((l) => `${fmt(l.at)} ${l.method}${l.typed === true ? "(入力あり)" : l.typed === false ? "(入力なし)" : ""}`).join(" / ") || "なし"}`,
       `直近のエラー: ${err ? `${err.errorCode || err.status || err.name || "error"} ${String(err.errorMessage || err.body || err.message || "").slice(0, 200)}` : "なし"}`,
@@ -512,6 +544,9 @@
   }
 
   // ---- 起動 ----
+  $("ver").textContent = VERSION;
+  // ホーム画面から開いたときは再読み込みボタンが無いので、URLを変えて古い控え（キャッシュ）を使わせない
+  $("btnReload").onclick = () => location.replace(`${location.pathname}?v=${Date.now()}`);
   $("btnRedirect").onclick = () => signIn("redirect");
   $("btnPopup").onclick = () => signIn("popup");
   $("btnDrive").onclick = runDriveTest;
