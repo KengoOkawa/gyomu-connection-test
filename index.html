@@ -325,9 +325,13 @@
       headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
     });
     if (!res.ok) {
-      const err = new Error(`OneDriveがエラーを返しました（${res.status}）`);
+      const body = await res.text().catch(() => "");
+      let code = "";
+      try { code = JSON.parse(body).error.code || ""; } catch { /* 本文がJSONでないときはコードなし */ }
+      const err = new Error(`OneDriveがエラーを返しました（${res.status}${code ? " " + code : ""}）`);
       err.status = res.status;
-      err.body = await res.text().catch(() => "");
+      err.code = code;
+      err.body = body;
       throw err;
     }
     return res.json();
@@ -359,15 +363,20 @@
       nonce: (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()),
     };
     const name = `${FILE_PREFIX}${device}.json`;
+    let step = "アプリ専用フォルダの準備";
     try {
       const t0 = performance.now();
-      await graph(`/me/drive/special/approot:/${name}:/content`, {
+      // フォルダはこの呼び出しで初めて作られる。作られる前にパス指定で書き込むと404になることがあるため、先に取得してIDで指定する
+      const folder = await graph("/me/drive/special/approot");
+      step = "書き込み";
+      await graph(`/me/drive/items/${folder.id}:/${encodeURIComponent(name)}:/content`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const t1 = performance.now();
-      const item = await graph(`/me/drive/special/approot:/${name}`);
+      step = "読み戻し";
+      const item = await graph(`/me/drive/items/${folder.id}:/${encodeURIComponent(name)}`);
       const back = await readItem(item);
       const t2 = performance.now();
       const same = back.nonce === payload.nonce;
@@ -379,8 +388,8 @@
       await listDevices();
     } catch (e) {
       state.lastError = e;
-      state.drive = { error: e.status || e.errorCode || e.name };
-      setMsg("driveMsg", "ng", explainDriveError(e));
+      state.drive = { error: `${step}で${e.status || e.errorCode || e.name}${e.code ? " " + e.code : ""}` };
+      setMsg("driveMsg", "ng", `「${step}」の段階で失敗：${explainDriveError(e)}`);
     }
   }
 
