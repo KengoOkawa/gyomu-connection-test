@@ -92,7 +92,7 @@
       </div>
     </div>
     <div class="status" id="authMsg"></div>
-    <p class="hint">iPadでは「Safariのタブで開いたとき」と「ホーム画面に追加して開いたとき」の両方で試してください。うまくいかない方式があれば、もう一方のボタンも試してください。</p>
+    <p class="hint">iPad・スマホでは「ブラウザのタブで開いたとき」と「ホーム画面に追加して開いたとき」の両方で試してください。うまくいかない方式があれば、もう一方のボタンも試してください。</p>
   </section>
 
   <section>
@@ -136,8 +136,8 @@
 <script src="config.js"></script>
 <script src="vendor/msal-browser.min.js"></script>
 <script>
-  const VERSION = "2026-10-21c";
-  const DEVICES = { "school-pc": "学校PC", "home-pc": "個人PC", "school-ipad": "学校iPad" };
+  const VERSION = "2026-10-21d";
+  const DEVICES = { "school-pc": "学校PC", "home-pc": "個人PC", "school-ipad": "学校iPad", "home-phone": "個人スマホ" };
   const SCOPES = ["Files.ReadWrite.AppFolder"];
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const FILE_PREFIX = "connection-test-";
@@ -463,7 +463,7 @@
     else if (/CriOS|Chrome\//.test(ua)) name = "Chrome";
     else if (/FxiOS|Firefox\//.test(ua)) name = "Firefox";
     else if (/Safari\//.test(ua)) name = "Safari";
-    const os = iPad ? "iPad" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "不明";
+    const os = iPad ? "iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "不明";
     return `${os} / ${name}`;
   }
 
